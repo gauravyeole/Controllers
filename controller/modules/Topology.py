@@ -249,5 +249,4 @@ class Topology(ControllerModule, CFX):
         pass
 
     def timer_method(self):
-        self.sdn_listener()
         self.manage_topology()
