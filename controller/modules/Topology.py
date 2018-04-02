@@ -85,13 +85,10 @@ class Topology(ControllerModule, CFX):
             params = {"OverlayId": overlay_id, "PeerId": peer_id}
             self.register_cbt("LinkManager", "LNK_CREATE_LINK", params)
 
-    def remove_peer_connection(self, overlay_id, peer_id):
+    def remove_peer_connection(self, overlay_id, link_id): # get link_id nstead of peer_id
         if (self._overlays[overlay_id]["Peers"].
                 get(peer_id, "PeerStateUnknown")) == "PeerStateConnected":
-            for lid, pid in self._links.items():
-                if peer_id == pid:
-                    link_id = lid
-                    break
+            peer_id = self._links[link_id]
             params = {"OverlayId": overlay_id, "LinkId": link_id, "PeerId": peer_id}
             self.register_cbt("LinkManager", "LNK_REMOVE_LINK", params)
 
@@ -107,7 +104,14 @@ class Topology(ControllerModule, CFX):
                                   "Link Creation Failed {0}".format(cbt.response.data))
 
     def resp_handler_remove_link(self, cbt):
-        pass
+        olid = cbt.request.params["OverlayId"]
+        peer_id = cbt.request.params["PeerId"]
+        with self._lock:
+            if cbt.response.status:
+                self._overlays[olid]["Peers"].pop(peer_id, None)
+            else:
+                self.register_cbt("Logger", "LOG_WARNING", 
+                                "Link deletion failed {0}".format(cbt.response.data))
 
     def resp_handler_query_overlay_info(self, cbt):
         if cbt.response.status:
@@ -134,6 +138,26 @@ class Topology(ControllerModule, CFX):
             self.connect_to_peer(peer["OverlayId"], peer["PeerId"])
             cbt.set_response(None, True)
             self.complete_cbt(cbt)
+
+    def req_handler_top_create_link(self, cbt):
+        with self._lock:
+            overlay_id = cbt.request.params["OverlayId"]
+            peer_id = cbt.request.params["PeerId"]
+            self.connect_to_peer(overlay_id, peer_id)
+            cbt.set_response(None, True)
+            cbt.complete_cbt(cbt)
+
+    def req_handler_top_remove_link(self, cbt):
+        with self._lock:
+            overlay_id = cbt.request.params["OverlayId"]
+            peer_id = cbt.request.params["PeerId"]
+            for lid, pid in self._links.items():
+                if peer_id == pid:
+                    link_id = lid
+                    break
+            self.remove_peer_connection(overlay_id, link_id)
+            cbt.set_response(None, True)
+            cbt.complete_cbt(cbt)
 
     def req_handler_query_peer_ids(self, cbt):
         peer_ids = {}
@@ -212,6 +236,10 @@ class Topology(ControllerModule, CFX):
                 self.req_handler_broadcast_frame(cbt)
             elif cbt.request.action == "LNK_DATA_UPDATES":
                 self.req_handler_link_data_update(cbt)
+            elif cbt.request.action == "TOP_CREATE_LINK":
+                self.req_handler_top_create_link(cbt)
+            elif cbt.request.action == "TOP_REMOVE_LINK":
+                self.req_handler_top_remove_link(cbt)
             else:
                 self.req_handler_default(cbt)
         elif cbt.op_type == "Response":
