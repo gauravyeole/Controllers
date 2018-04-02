@@ -113,6 +113,16 @@ class Topology(ControllerModule, CFX):
             params = {"OverlayId": overlay_id, "PeerId": peer_id}
             self.register_cbt("LinkManager", "LNK_CREATE_LINK", params)
 
+    def remove_peer_connection(self, overlay_id, peer_id):
+        if (self._overlays[overlay_id]["Peers"].
+                get(peer_id, "PeerStateUnknown")) == "PeerStateConnected":
+            for lid, pid in self._links.items():
+                if peer_id == pid:
+                    link_id = lid
+                    break
+            params = {"OverlayId": overlay_id, "LinkId": link_id, "PeerId": peer_id}
+            self.register_cbt("LinkManager", "LNK_REMOVE_LINK", params)
+
     def resp_handler_create_link(self, cbt):
         olid = cbt.request.params["OverlayId"]
         peer_id = cbt.request.params["PeerId"]
@@ -123,6 +133,9 @@ class Topology(ControllerModule, CFX):
                 self._overlays[olid]["Peers"].pop(peer_id, None)
                 self.register_cbt("Logger", "LOG_WARNING",
                                   "Link Creation Failed {0}".format(cbt.response.data))
+
+    def resp_handler_remove_link(self, cbt):
+        pass
 
     def resp_handler_query_overlay_info(self, cbt):
         if cbt.response.status:
@@ -234,6 +247,8 @@ class Topology(ControllerModule, CFX):
                 self.resp_handler_query_overlay_info(cbt)
             elif cbt.request.action == "LNK_CREATE_LINK":
                 self.resp_handler_create_link(cbt)
+            elif cbt.request.action == "LNK_REMOVE_LINK":
+                self.resp_handler_remove_link(cbt)
             elif cbt.request.action == "BDC_BROADCAST":
                 if not cbt.response.status:
                     self.register_cbt(
