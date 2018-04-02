@@ -19,6 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import socket
 import threading
 try:
     import simplejson as json
@@ -32,11 +33,18 @@ from controller.framework.CFx import CFX
 class Topology(ControllerModule, CFX):
     def __init__(self, cfx_handle, module_config, module_name):
         super(Topology, self).__init__(cfx_handle, module_config, module_name)
+        self._sdn_ip = self._cm_config["SDNControllerIP"]
+        self._sdn_port = self._cm_config["SDNControllerPort"]
+        self._sdn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sdn_listener_thread = None
         self._overlays = {}
         self._lock = threading.Lock()
         self._links = dict()
 
     def initialize(self):
+        self._sdn_listener_thread = Thread(target=self.__sdn_listener)
+        self._sdn_listener_thread.setDaemon(True)
+        self._sdn_listener_thread.start()
         self._cfx_handle.start_subscription("Signal",
                                             "SIG_PEER_PRESENCE_NOTIFY")
         self._cfx_handle.start_subscription("TincanInterface",
@@ -61,6 +69,26 @@ class Topology(ControllerModule, CFX):
                                   "OverlayVisualizer module not loaded."
                                   " Visualization data will not be sent.")
         self.register_cbt("Logger", "LOG_INFO", "Module loaded")
+
+    def __sdn_listener(self):
+        """
+            msg = {
+                    "Action"  : Action_Code,
+                    "Params" : {
+                                    "NodeID" : NodeID,
+                                    "LinkID" : LinkID 
+                                }
+                }
+        """
+        try:
+            self._sdn_socket.connect((self._sdn_ip, self._sdn_port))
+            msg = json.loads(self._sdn_socket.recv(1024))
+            self._sdn_socket.close()
+
+            msg = json.loads(msg.decode('ascii'))
+            self.register_cbt("TOPOLOGY", msg["Action"], msg["Params"])
+        except:
+            self._sdn_socket.close()
 
     def terminate(self):
         #for k in self._cfx_handle._owned_cbts.keys():

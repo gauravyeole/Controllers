@@ -40,6 +40,8 @@
   },
   "Topology": {
     "Enabled": true,
+    "SDNControllerIP" : "***",
+    "SDNControllerPort" : "***",
     "Overlays": {
       "A0FB389": {
         "Name": "ipop_vnet_overlay0",
